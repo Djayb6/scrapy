@@ -18,7 +18,7 @@ class Request(object_ref):
 
     def __init__(self, url, callback=None, method='GET', headers=None, body=None,
                  cookies=None, meta=None, encoding='utf-8', priority=0,
-                 dont_filter=False, errback=None):
+                 dont_filter=False, errback=None, on_headers_received=None):
 
         self._encoding = encoding  # this one has to be set first
         self.method = str(method).upper()
@@ -30,6 +30,7 @@ class Request(object_ref):
         assert callback or not errback, "Cannot use errback without a callback"
         self.callback = callback
         self.errback = errback
+        self.on_headers_received = on_headers_received
 
         self.cookies = cookies or {}
         self.headers = Headers(headers or {}, encoding=encoding)
@@ -87,7 +88,7 @@ class Request(object_ref):
         given new values.
         """
         for x in ['url', 'method', 'headers', 'body', 'cookies', 'meta',
-                  'encoding', 'priority', 'dont_filter', 'callback', 'errback']:
+                  'encoding', 'priority', 'dont_filter', 'callback', 'errback', 'on_headers_received']:
             kwargs.setdefault(x, getattr(self, x))
         cls = kwargs.pop('cls', self.__class__)
         return cls(*args, **kwargs)

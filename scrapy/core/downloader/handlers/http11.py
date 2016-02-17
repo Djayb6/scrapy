@@ -15,15 +15,13 @@ from twisted.web.http import PotentialDataLoss
 from scrapy.xlib.tx import Agent, ProxyAgent, ResponseDone, \
     HTTPConnectionPool, TCP4ClientEndpoint
 
-from scrapy.http import Headers
+from scrapy.http import Headers, Response
 from scrapy.responsetypes import responsetypes
 from scrapy.core.downloader.webclient import _parse
 from scrapy.utils.misc import load_object
 from scrapy.utils.python import to_bytes, to_unicode
 from scrapy import twisted_version
 
-from scrapy.utils import signal as _signal
-from scrapy import signals 
 
 logger = logging.getLogger(__name__)
 
@@ -237,20 +235,19 @@ class ScrapyAgent(object):
         request.meta['download_latency'] = time() - start_time
         return result
 
-    def _send_headers_received(self, txresponse, request):
-        results = _signal.send_catch_log(txresponse=txresponse,
-                                         request=request,
-                                         signal=signals.headers_received)
-        if results:
-            # return value of the first receiver's callback
-            return results[0][1]
+    def _notify_headers_received(self, txresponse, request):
+        callback = request.on_headers_received
+        if callback:
+            status = int(txresponse.code)
+            headers = txresponse.headers.getAllRawHeaders()
+            response = Response(url=request.url, status=status, headers=headers)
+            return callback(response, request)
         else:
-            # if no registered receiver, don't cancel download
-            False
+            return False
 
     def _cb_bodyready(self, txresponse, request):
-        cancel_request = self._send_headers_received(txresponse, request)
-        if cancel_request:
+        cancel_request = self._notify_headers_received(txresponse, request)
+        if cancel_request is True:
             info_message = "Cancelling download of {url} due to user action".format(url=request.url)
             logger.info(info_message)
             txresponse._transport._producer.loseConnection()
