@@ -297,7 +297,7 @@ class ScrapyAgent(object):
         response = Response(url=request.url, status=status, headers=headers, request=request)
         answers = spider.crawler.signals.send_catch_log(response=response, request=request,
                                                         spider=spider, signal=signals.headers_received)
-        del request.meta['expected_size']
+        request.meta.pop('expected_size', None)
 
         if answers:
             cancel_download = answers[0][1]
