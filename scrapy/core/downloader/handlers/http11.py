@@ -16,13 +16,13 @@ from twisted.web.http import PotentialDataLoss
 from scrapy.xlib.tx import Agent, ProxyAgent, ResponseDone, \
     HTTPConnectionPool, TCP4ClientEndpoint
 
-from scrapy.http import Headers
+from scrapy.http import Headers, Response
 from scrapy.responsetypes import responsetypes
 from scrapy.core.downloader.webclient import _parse
 from scrapy.core.downloader.tls import openssl_methods
 from scrapy.utils.misc import load_object
 from scrapy.utils.python import to_bytes, to_unicode
-from scrapy import twisted_version
+from scrapy import twisted_version, signals
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class HTTP11DownloadHandler(object):
         agent = ScrapyAgent(contextFactory=self._contextFactory, pool=self._pool,
             maxsize=getattr(spider, 'download_maxsize', self._default_maxsize),
             warnsize=getattr(spider, 'download_warnsize', self._default_warnsize))
-        return agent.download_request(request)
+        return agent.download_request(request, spider)
 
     def close(self):
         d = self._pool.closeCachedConnections()
@@ -233,7 +233,7 @@ class ScrapyAgent(object):
         return self._Agent(reactor, contextFactory=self._contextFactory,
             connectTimeout=timeout, bindAddress=bindaddress, pool=self._pool)
 
-    def download_request(self, request):
+    def download_request(self, request, spider):
         timeout = request.meta.get('download_timeout') or self._connectTimeout
         agent = self._get_agent(request, timeout)
 
@@ -264,6 +264,9 @@ class ScrapyAgent(object):
             method, to_bytes(url, encoding='ascii'), headers, bodyproducer)
         # set download latency
         d.addCallback(self._cb_latency, request, start_time)
+        # notify headers received
+        if spider.crawler.settings.getbool('ENABLE_SEND_HEADERS_RECEIVED_SIGNAL', True):
+            d.addCallback(self._cb_notify_headers_received, request, spider)
         # response body is ready to be consumed
         d.addCallback(self._cb_bodyready, request)
         d.addCallback(self._cb_bodydone, request, url)
@@ -286,6 +289,24 @@ class ScrapyAgent(object):
     def _cb_latency(self, result, request, start_time):
         request.meta['download_latency'] = time() - start_time
         return result
+
+    def _cb_notify_headers_received(self, txresponse, request, spider):
+        status = int(txresponse.code)
+        headers = txresponse.headers.getAllRawHeaders()
+        response = Response(url=request.url, status=status, headers=headers)
+        request.meta['txresponse.length'] = txresponse.length
+        answers = spider.crawler.signals.send_catch_log(response=response, request=request,
+                                                        spider=spider, signal=signals.headers_received)
+        del request.meta['txresponse.length']
+
+        if answers:
+            cancel_download = answers[0][1]
+            if cancel_download is True:
+                info_message = "Download of {url} cancelled by extension".format(url=request.url)
+                txresponse._transport._producer.loseConnection()
+                raise defer.CancelledError(info_message)
+
+        return txresponse
 
     def _cb_bodyready(self, txresponse, request):
         # deliverBody hangs for responses without body
