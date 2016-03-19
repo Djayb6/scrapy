@@ -293,11 +293,11 @@ class ScrapyAgent(object):
     def _cb_notify_headers_received(self, txresponse, request, spider):
         status = int(txresponse.code)
         headers = txresponse.headers.getAllRawHeaders()
-        response = Response(url=request.url, status=status, headers=headers)
-        request.meta['txresponse.length'] = txresponse.length
+        request.meta['expected_size'] = txresponse.length if txresponse.length != UNKNOWN_LENGTH else -1
+        response = Response(url=request.url, status=status, headers=headers, request=request)
         answers = spider.crawler.signals.send_catch_log(response=response, request=request,
                                                         spider=spider, signal=signals.headers_received)
-        del request.meta['txresponse.length']
+        del request.meta['expected_size']
 
         if answers:
             cancel_download = answers[0][1]
