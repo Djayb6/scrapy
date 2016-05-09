@@ -122,12 +122,21 @@ class TunnelingTCP4ClientEndpoint(TCP4ClientEndpoint):
         """
         self._protocol.dataReceived = self._protocolDataReceived
         if  TunnelingTCP4ClientEndpoint._responseMatcher.match(bytes):
-            self._protocol.transport.startTLS(self._contextFactory,
+            try:
+                # this sets proper Server Name Indication extension
+                # but is only available for Twisted>=14.0
+                sslOptions = self._contextFactory.creatorForNetloc(
+                    self._tunneledHost, self._tunneledPort)
+            except AttributeError:
+                # fall back to non-SNI SSL context factory
+                sslOptions = self._contextFactory
+            self._protocol.transport.startTLS(sslOptions,
                                               self._protocolFactory)
             self._tunnelReadyDeferred.callback(self._protocol)
         else:
             self._tunnelReadyDeferred.errback(
-                TunnelError('Could not open CONNECT tunnel.'))
+                TunnelError('Could not open CONNECT tunnel with proxy %s:%s' % (
+                    self._host, self._port)))
 
     def connectFailed(self, reason):
         """Propagates the errback to the appropriate deferred."""
@@ -193,6 +202,14 @@ class TunnelingAgent(Agent):
                 self._contextFactory, self._connectTimeout,
                 self._bindAddress)
 
+    def _requestWithEndpoint(self, key, endpoint, method, parsedURI,
+            headers, bodyProducer, requestPath):
+        # proxy host and port are required for HTTP pool `key`
+        # otherwise, same remote host connection request could reuse
+        # a cached tunneled connection to a different proxy
+        key = key + self._proxyConf
+        return super(TunnelingAgent, self)._requestWithEndpoint(key, endpoint, method, parsedURI,
+            headers, bodyProducer, requestPath)
 
 
 class ScrapyAgent(object):

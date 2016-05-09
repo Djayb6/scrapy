@@ -151,7 +151,7 @@ It returns ``None`` if no element was found:
 
 A default return value can be provided as an argument, to be used instead of ``None``:
 
-    >>> sel.xpath('//div[@id="not-exists"]/text()').extract_first(default='not-found')
+    >>> response.xpath('//div[@id="not-exists"]/text()').extract_first(default='not-found')
     'not-found'
 
 Notice that CSS selectors can select text or attribute nodes using CSS3
@@ -738,9 +738,13 @@ simple/convenient XPaths. You can use the
 
 Let's show an example that illustrates this with Github blog atom feed.
 
+.. highlight:: sh
+
 First, we open the shell with the url we want to scrape::
 
     $ scrapy shell https://github.com/blog.atom
+
+.. highlight:: python
 
 Once in the shell we can try selecting all ``<link>`` objects and see that it
 doesn't work (because the Atom XML namespace is obfuscating those nodes)::
